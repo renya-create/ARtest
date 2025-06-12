@@ -16,7 +16,7 @@ import os
 
 def test_ar_tag_detection(image_path: str, show_details: bool = False) -> bool:
     """
-    ARタグ検出の簡単なテスト関数
+    ARタグ検出の簡単なテスト関数（複数パラメータ自動試行）
     
     Args:
         image_path: 画像ファイルのパス
@@ -38,9 +38,8 @@ def test_ar_tag_detection(image_path: str, show_details: bool = False) -> bool:
             print(f"エラー: 画像を読み込めません: {image_path}")
         return False
     
-    # 5x5のAruco辞書とパラメータを設定 (OpenCV 4.11対応)
+    # 5x5のAruco辞書を設定
     aruco_dict = cv2.aruco.getPredefinedDictionary(cv2.aruco.DICT_5X5_250)
-    parameters = cv2.aruco.DetectorParameters()
     
     # グレースケール変換
     if len(image.shape) == 3:
@@ -48,24 +47,78 @@ def test_ar_tag_detection(image_path: str, show_details: bool = False) -> bool:
     else:
         gray = image.copy()
     
-    # ARタグ検出
-    corners, ids, rejected = cv2.aruco.detectMarkers(
-        gray, aruco_dict, parameters=parameters
-    )
+    # 複数のパラメータ設定を順次試行
+    parameter_configs = [
+        {
+            "name": "default",
+            "params": {}  # デフォルト設定
+        },
+        {
+            "name": "relaxed", 
+            "params": {
+                "adaptiveThreshWinSizeMin": 3,
+                "adaptiveThreshWinSizeMax": 23,
+                "adaptiveThreshWinSizeStep": 4,
+                "adaptiveThreshConstant": 7,
+                "minMarkerPerimeterRate": 0.01,
+                "maxMarkerPerimeterRate": 4.0,
+                "polygonalApproxAccuracyRate": 0.05,
+                "minCornerDistanceRate": 0.01,
+                "minDistanceToBorder": 1
+            }
+        },
+        {
+            "name": "strict",
+            "params": {
+                "adaptiveThreshWinSizeMin": 5,
+                "adaptiveThreshWinSizeMax": 15,
+                "adaptiveThreshConstant": 10,
+                "minMarkerPerimeterRate": 0.1,
+                "maxMarkerPerimeterRate": 2.0,
+                "polygonalApproxAccuracyRate": 0.01,
+                "minCornerDistanceRate": 0.1
+            }
+        }
+    ]
     
-    detected = ids is not None and len(ids) > 0
+    detected = False
+    successful_config = None
+    corners = None
+    ids = None
+    
+    for config in parameter_configs:
+        # パラメータを設定
+        parameters = cv2.aruco.DetectorParameters()
+        
+        # カスタムパラメータを適用
+        for param_name, param_value in config["params"].items():
+            if hasattr(parameters, param_name):
+                setattr(parameters, param_name, param_value)
+        
+        # ARタグ検出
+        corners, ids, rejected = cv2.aruco.detectMarkers(
+            gray, aruco_dict, parameters=parameters
+        )
+        
+        if ids is not None and len(ids) > 0:
+            detected = True
+            successful_config = config["name"]
+            if show_details:
+                print(f"✓ ARタグ検出成功: {len(ids)} 個 ({successful_config}パラメータで検出)")
+            break
+        elif show_details:
+            print(f"✗ {config['name']}パラメータ: 検出なし")
     
     # 結果の詳細表示
     if show_details:
         if detected:
-            print(f"✓ ARタグ検出成功: {len(ids)} 個")
             for i, (corner, tag_id) in enumerate(zip(corners, ids)):
                 print(f"  タグ {i+1} (ID: {tag_id[0]}):")
                 corner_points = corner[0]
                 for j, point in enumerate(corner_points):
                     print(f"    座標{j+1}: ({point[0]:.2f}, {point[1]:.2f})")
         else:
-            print("✗ ARタグが検出されませんでした")
+            print("✗ すべてのパラメータでARタグが検出されませんでした")
     
     return detected
 
